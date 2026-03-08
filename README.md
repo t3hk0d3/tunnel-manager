@@ -14,23 +14,41 @@ IP Tunnel Manager is a lightweight Python utility designed to automate the creat
 - **Extensive Hook System**: Execute custom shell commands at every stage of the tunnel lifecycle (global and per-tunnel).
 - **Systemd Integration**: Includes a service unit and a timer for periodic tunnel health checks and management.
 
-## Installation
-
-### Prerequisites
+## Prerequisites
 
 - Linux OS with `iproute2` and `ping` installed.
-- Python 3.6 or higher.
-- No additional libraries required.
+- Python 3.7 or higher (for `dataclasses` support).
+- No additional libraries required (uses Python standard library).
 
-### Setup
+## Installation
+
+The easiest way to install the IP Tunnel Manager is by using the automated installation script.
+
+```bash
+curl -sSL https://raw.githubusercontent.com/t3hk0d3/tunnel-manager/main/install.sh | sudo bash
+```
+
+This script will:
+1.  Install the `ip-tunnel-manager` script to `/usr/local/bin/`.
+2.  Set up a default configuration in `/etc/ip-tunnel-manager/config.json`.
+3.  Install and enable a systemd timer to run the manager every 5 minutes.
+
+### Manual Setup (Optional)
+
+If you prefer to install it manually:
 
 1. **Download and unpack the repository**:
    ```bash
-   curl -L https://github.com/t3hk0d3/tunnel-manager/archive/refs/heads/master.tar.gz | tar xz
-   cd tunnel-manager-master
+   git clone https://github.com/tehkode/tunnel-manager.git
+   cd tunnel-manager
    ```
 
-2. **Install the Systemd service & timer (Optional)**:
+2. **Run the local install script**:
+   ```bash
+   sudo ./install.sh
+   ```
+
+3. **Or configure systemd manually**:
    ```bash
    sudo mkdir -p /etc/ip-tunnel-manager
    sudo cp ip-tunnel-manager.service ip-tunnel-manager.timer /etc/systemd/system/
