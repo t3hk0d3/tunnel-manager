@@ -35,10 +35,10 @@ function fetch_file() {
     
     if [[ -f "./$filename" ]]; then
         echo "Using local $filename..."
-        cp "./$filename" "$target_path"
+        cp -f "./$filename" "$target_path"
     else
         echo "Downloading $filename from repository..."
-        curl -sSL "$REPO_URL/$filename" -o "$target_path"
+        curl -fsSL "$REPO_URL/$filename" -o "$target_path"
     fi
 }
 
@@ -94,7 +94,7 @@ EOF
     # 5. Reload and Enable
     systemctl daemon-reload
     systemctl enable "$TIMER_NAME"
-    systemctl start "$TIMER_NAME"
+    systemctl restart "$TIMER_NAME"
 
     echo "Installation complete!"
     echo "Configuration: $CONFIG_DIR/config.json"
