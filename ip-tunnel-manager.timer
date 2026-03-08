@@ -1,0 +1,10 @@
+[Unit]
+Description=Run IP Tunnel Manager every 5 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Unit=ip-tunnel-manager.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=IP Tunnel Manager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /home/tehkode/dev/tunnel-manager/tunnel-manager.py /etc/ip-tunnel-manager/config.yaml
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
