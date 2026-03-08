@@ -6,8 +6,8 @@
 set -e
 
 # Configuration
-INSTALL_DIR="/usr/local/bin"
-CONFIG_DIR="/etc/ip-tunnel-manager"
+INSTALL_DIR="${INSTALL_DIR:-$(pwd)}"
+CONFIG_DIR="${CONFIG_DIR:-$INSTALL_DIR}"
 SERVICE_NAME="ip-tunnel-manager.service"
 TIMER_NAME="ip-tunnel-manager.timer"
 REPO_URL="https://raw.githubusercontent.com/t3hk0d3/tunnel-manager/refs/heads/master"
@@ -128,9 +128,19 @@ function uninstall() {
     systemctl stop "$TIMER_NAME" "$SERVICE_NAME" 2>/dev/null || true
     systemctl disable "$TIMER_NAME" "$SERVICE_NAME" 2>/dev/null || true
     
+    # Safely remove the installed executable by reading the service file first
+    if [[ -f "/etc/systemd/system/$SERVICE_NAME" ]]; then
+        local installed_bin
+        installed_bin=$(grep 'ExecStart=' "/etc/systemd/system/$SERVICE_NAME" | cut -d'=' -f2 | awk '{print $1}')
+        if [[ -n "$installed_bin" && -f "$installed_bin" ]]; then
+            rm -f "$installed_bin"
+        fi
+    else
+        rm -f "$INSTALL_DIR/ip-tunnel-manager"
+    fi
+
     rm -f "/etc/systemd/system/$SERVICE_NAME"
     rm -f "/etc/systemd/system/$TIMER_NAME"
-    rm -f "$INSTALL_DIR/ip-tunnel-manager"
     
     systemctl daemon-reload
     systemctl reset-failed "$TIMER_NAME" "$SERVICE_NAME" 2>/dev/null || true

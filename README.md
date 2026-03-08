@@ -28,9 +28,16 @@ The easiest way to install the IP Tunnel Manager is by using the automated insta
 curl -sSL https://raw.githubusercontent.com/t3hk0d3/tunnel-manager/refs/heads/master/install.sh | sudo bash
 ```
 
+Alternatively, you can dictate where the tool gets installed by providing `INSTALL_DIR` and `CONFIG_DIR`. Since this targets embedded systems, `/usr/local/bin` is not used by default because it is often mounted as a ramdisk. The script will instead install it in the current working directory (`pwd`), or the directory you specify:
+
+```bash
+mkdir -p /opt/tunnel-manager && cd /opt/tunnel-manager
+curl -sSL https://raw.githubusercontent.com/t3hk0d3/tunnel-manager/refs/heads/master/install.sh | sudo bash
+```
+
 This script will:
-1.  Install the `ip-tunnel-manager` script to `/usr/local/bin/`.
-2.  Set up a default configuration in `/etc/ip-tunnel-manager/config.json`.
+1.  Install the `ip-tunnel-manager` script to the directory where you run the install script (e.g., your current working directory, or `/opt/tunnel-manager` if you change to it first). You can also override this by setting `INSTALL_DIR` before running the script.
+2.  Set up a default configuration in `config.json` inside the installation directory (or override via `CONFIG_DIR`).
 3.  Install and enable a systemd timer to run the manager every 5 minutes.
 
 ### Manual Setup (Optional)
