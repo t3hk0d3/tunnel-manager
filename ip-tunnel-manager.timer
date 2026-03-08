@@ -1,5 +1,7 @@
 [Unit]
 Description=Run IP Tunnel Manager every 5 minutes
+After=network-online.target
+Wants=network-online.target
 
 [Timer]
 OnBootSec=1min
