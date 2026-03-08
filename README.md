@@ -25,7 +25,7 @@ IP Tunnel Manager is a lightweight Python utility designed to automate the creat
 The easiest way to install the IP Tunnel Manager is by using the automated installation script.
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/t3hk0d3/tunnel-manager/main/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/t3hk0d3/tunnel-manager/refs/heads/master/install.sh | sudo bash
 ```
 
 This script will:

@@ -10,7 +10,7 @@ INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/ip-tunnel-manager"
 SERVICE_NAME="ip-tunnel-manager.service"
 TIMER_NAME="ip-tunnel-manager.timer"
-REPO_URL="https://github.com/t3hk0d3/tunnel-manager/raw/main"
+REPO_URL="https://raw.githubusercontent.com/t3hk0d3/tunnel-manager/refs/heads/master"
 
 # Help message
 function show_help() {
