@@ -4,6 +4,7 @@ import subprocess
 import sys
 import json
 import logging
+import ipaddress
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Optional
 import os
@@ -460,22 +461,32 @@ class Tunnel:
             return False
         return True
 
+    def _normalize_cidr(self, addr: str) -> str:
+        """Normalize an IP address to CIDR notation (e.g., adding /32 or /128 if missing)."""
+        if '/' in addr:
+            return addr
+        try:
+            ip = ipaddress.ip_address(addr)
+            return f"{addr}/{32 if ip.version == 4 else 128}"
+        except ValueError:
+            return addr
+
     def _configure_addresses(self, addresses: List[str]) -> bool:
         """Configures IP addresses for the tunnel interface, adding or removing as needed."""
         assigned = self.ip_executor.get_assigned_ips(self.name)
-        
-        # Compare by exact IP (without mask) to avoid partial matches like 10.0.0.1 matching 10.0.0.12
-        def get_ip(cidr): return cidr.split('/')[0]
-
-        target_ips = [get_ip(a) for a in addresses]
+        target_cidrs = [self._normalize_cidr(a) for a in addresses]
         
         for addr in assigned:
-            if get_ip(addr) not in target_ips:
-                self.ip_executor.remove_address(self.name, addr)
-                logger.info(f"Tunnel {self.name}: removed {addr}")
+            if addr not in target_cidrs:
+                if self.ip_executor.remove_address(self.name, addr):
+                    logger.info(f"Tunnel {self.name}: removed {addr}")
+                else:
+                    logger.warning(f"Tunnel {self.name}: failed to remove {addr}")
 
-        for addr in addresses:
-            if get_ip(addr) not in [get_ip(ip) for ip in self.ip_executor.get_assigned_ips(self.name)]:
+        # Re-fetch assigned after removals to ensure we have the current state
+        current_assigned = self.ip_executor.get_assigned_ips(self.name)
+        for addr in target_cidrs:
+            if addr not in current_assigned:
                 if self.ip_executor.assign_address(self.name, addr):
                     logger.info(f"Tunnel {self.name}: assigned {addr}")
                 else:
@@ -491,19 +502,27 @@ class Tunnel:
         normalized_routes = []
         for r in routes:
             if r == 'default':
+                # Use standard CIDR for comparison as IpCommandExecutor already maps default to these
                 normalized_routes.append('0.0.0.0/0')
+                normalized_routes.append('::/0')
             else:
-                normalized_routes.append(r)
+                normalized_routes.append(self._normalize_cidr(r))
         
         for route in assigned:
             if route not in normalized_routes:
-                self.ip_executor.remove_route(self.name, route)
-                logger.info(f"Tunnel {self.name}: removed route {route}")
+                if self.ip_executor.remove_route(self.name, route):
+                    logger.info(f"Tunnel {self.name}: removed route {route}")
                 
         for route in normalized_routes:
-            if not self.ip_executor.add_route(self.name, route):
-                logger.error(f"Tunnel {self.name}: failed to configure route {route}")
-                return False
+            # We don't want to try and add 0.0.0.0/0 to an ipv6-only interface or vice versa
+            # unless the interface is dual-stack, but IpCommandExecutor handles the versioning
+            # based on ':' presence. We just check if it's already assigned.
+            if route not in assigned:
+                if self.ip_executor.add_route(self.name, route):
+                    logger.info(f"Tunnel {self.name}: configured route {route}")
+                else:
+                    logger.error(f"Tunnel {self.name}: failed to configure route {route}")
+                    return False
                 
         return True
 
