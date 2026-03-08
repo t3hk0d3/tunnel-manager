@@ -25,7 +25,7 @@ Configuration File Format (JSON):
         "<tunnel_name>": {
             "type": "<type>",             # Tunnel mode (default: gre)
             "remote": "<remote_ip>",      # Remote endpoint IP address (required)
-            "verify_ip": "<verify_ip>",   # Optional: ping this IP through the tunnel to verify connectivity
+            "verify_ips": ["<verify_ip>"],# Optional: list of IPs to ping through the tunnel to verify connectivity
             "addresses": [                # List of IP addresses to assign
                 "<ip_with_prefix>"        # CIDR notation (e.g., 192.168.1.1/24)
             ],
@@ -48,7 +48,7 @@ Example Configuration:
             "type": "gretap",
             "local": "203.0.113.5",
             "remote": "203.0.113.10",
-            "verify_ip": "10.0.0.2",
+            "verify_ips": ["10.0.0.2"],
             "addresses": [
                 "10.0.0.1/24"
             ],
@@ -88,7 +88,7 @@ class TunnelEntry:
     remote: str = None
     addresses: List[str] = field(default_factory=list)
     local: str = None  # Optional, will be determined if not provided
-    verify_ip: Optional[str] = None # Optional, ping this IP through the tunnel to verify connectivity
+    verify_ips: List[str] = field(default_factory=list) # Optional, ping these IPs through the tunnel to verify connectivity
     routes: List[str] = field(default_factory=list)
     hooks: Dict[str, List[str]] = field(default_factory=dict)
     options: Dict[str, str] = field(default_factory=dict)
@@ -118,12 +118,19 @@ class TunnelConfig:
             tunnels_data = raw_config.get('tunnels', {})
             app_tunnels = {}
             for name, data in tunnels_data.items():
+                verify_ips = data.get('verify_ips', [])
+                if 'verify_ip' in data:
+                    if isinstance(data['verify_ip'], list):
+                        verify_ips.extend(data['verify_ip'])
+                    else:
+                        verify_ips.append(data['verify_ip'])
+                        
                 app_tunnels[name] = TunnelEntry(
                     type=data.get('type', 'gre').lower(),
                     remote=data.get('remote'),
                     addresses=data.get('addresses', []),
                     local=data.get('local'),
-                    verify_ip=data.get('verify_ip'),
+                    verify_ips=verify_ips,
                     routes=data.get('routes', []),
                     hooks=data.get('hooks', {}),
                     options={str(k): str(v) for k, v in data.get('options', {}).items()}
@@ -160,24 +167,71 @@ class IpCommandExecutor:
             logger.error(f"Command execution failed: {' '.join(cmd)}\n{e}")
             return -1, "", str(e)
 
+    def _run_json_cmd(self, cmd: List[str], detailed: bool = False) -> List[dict]:
+        """Execute an ip command with -j (json) and return parsed output."""
+        full_cmd = ['ip']
+        if detailed:
+            full_cmd.append('-d')
+        full_cmd.append('-j')
+        
+        # Handle optional flags like -4, -6 if they were passed at the start of cmd
+        if cmd and cmd[0] in ['-4', '-6']:
+            full_cmd.insert(1, cmd[0])
+            cmd = cmd[1:]
+
+        # Strip 'ip' from input cmd if it's there
+        if cmd and cmd[0] == 'ip':
+            full_cmd.extend(cmd[1:])
+        else:
+            full_cmd.extend(cmd)
+            
+        code, stdout, _ = self._run_cmd(full_cmd, check=False)
+        if code == 0 and stdout:
+            try:
+                return json.loads(stdout)
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse JSON from command: {' '.join(full_cmd)}")
+        return []
+
+    def get_tunnel_params(self, name: str) -> Optional[dict]:
+        """Get detailed tunnel parameters including type, remote, local, etc."""
+        data = self._run_json_cmd(['link', 'show', name], detailed=True)
+        if not data:
+            return None
+        
+        link_entry = data[0]
+        info = link_entry.get('linkinfo', {})
+        if not info:
+            return None
+            
+        params = {
+            'type': info.get('info_kind'),
+            'flags': link_entry.get('flags', [])
+        }
+        
+        # Add info_data fields (remote, local, ttl, etc.)
+        info_data = info.get('info_data', {})
+        for k, v in info_data.items():
+            # Normalize 'any' to None to match config expectations
+            if v == 'any':
+                params[k] = None
+            else:
+                params[k] = str(v)
+                
+        return params
+
     def tunnel_exists(self, name: str) -> bool:
         """Check if a tunnel interface with the given name exists."""
-        code, output, _ = self._run_cmd(['ip', 'link', 'show', name], check=False)
-        return code == 0
+        return bool(self._run_json_cmd(['link', 'show', name]))
 
     def get_local_ip(self, remote_ip: str) -> str:
         """
         Determine the local IP address that would be used to route to a given remote IP.
         Returns an empty string if the local IP cannot be determined.
         """
-        code, output, _ = self._run_cmd(['ip', 'route', 'get', remote_ip], check=False)
-        if code != 0 or not output:
-            return ""
-        # Parse "src <local_ip>" from output
-        for part in output.split():
-            if part == 'src' and output.find('src') >= 0:
-                idx = output.split().index('src')
-                return output.split()[idx + 1]
+        data = self._run_json_cmd(['route', 'get', remote_ip])
+        if data and isinstance(data, list) and 'prefsrc' in data[0]:
+            return data[0]['prefsrc']
         return ""
 
     def create_tunnel(self, name: str, tunnel_type: str, local: str = None, remote: str = None, options: Dict[str, str] = None) -> bool:
@@ -212,18 +266,13 @@ class IpCommandExecutor:
 
     def get_assigned_ips(self, interface: str) -> List[str]:
         """Get a list of IP addresses assigned to a given network interface."""
-        code, output, _ = self._run_cmd(['ip', 'addr', 'show', interface], check=False)
+        data = self._run_json_cmd(['addr', 'show', interface])
         ips = []
-        if code == 0:
-            for line in output.split('\n'):
-                line = line.strip()
-                # support both ipv4 and ipv6
-                if line.startswith('inet ') or line.startswith('inet6 '):
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        # Sometimes inet6 has scope link which we might want to ignore, but we'll include it for completeness
-                        if 'scope link' not in line:
-                            ips.append(parts[1])
+        if data and isinstance(data, list):
+            for addr in data[0].get('addr_info', []):
+                # Filter out link-local addresses to match previous behavior
+                if addr.get('scope') != 'link':
+                    ips.append(f"{addr['local']}/{addr['prefixlen']}")
         return ips
 
     def assign_address(self, interface: str, address: str) -> bool:
@@ -250,8 +299,11 @@ class IpCommandExecutor:
         if code != 0:
             logger.error(f"Failed to bring {interface} up: {err}")
             return False
-        code, output, _ = self._run_cmd(['ip', 'link', 'show', interface], check=False)
-        return 'UP' in output
+        
+        data = self._run_json_cmd(['link', 'show', interface])
+        if data and 'UP' in data[0].get('flags', []):
+            return True
+        return False
 
     def ping_remote(self, remote_ip: str, interface: str = None, count: int = 3) -> bool:
         """
@@ -294,17 +346,15 @@ class IpCommandExecutor:
         """Get a list of routes assigned to a given network interface."""
         routes = []
         for version in ['-4', '-6']:
-            code, output, _ = self._run_cmd(['ip', version, 'route', 'show', 'dev', interface], check=False)
-            if code == 0:
-                for line in output.split('\n'):
-                    line = line.strip()
-                    if line and 'proto kernel' not in line:
-                        parts = line.split()
-                        if len(parts) >= 1:
-                            route = parts[0]
-                            if route == 'default':
-                                route = '0.0.0.0/0' if version == '-4' else '::/0'
-                            routes.append(route)
+            cmd = [version, 'route', 'show', 'dev', interface]
+            data = self._run_json_cmd(cmd)
+            for entry in data:
+                # Filter out kernel-managed routes (e.g., proto kernel) to match previous behavior
+                if 'dst' in entry and entry.get('protocol') != 'kernel':
+                    dst = entry['dst']
+                    if dst == 'default':
+                        dst = '0.0.0.0/0' if version == '-4' else '::/0'
+                    routes.append(dst)
         return routes
 
 
@@ -355,7 +405,8 @@ class Tunnel:
             'TUNNEL_TYPE': self.config.type,
             'REMOTE_IP': self.config.remote or '',
             'LOCAL_IP': self.config.local or '',
-            'VERIFY_IP': self.config.verify_ip or '',
+            'VERIFY_IPS': ' '.join(self.config.verify_ips),
+            'VERIFY_IP': self.config.verify_ips[0] if self.config.verify_ips else '',
             'ADDRESSES': ' '.join(self.config.addresses),
             'ROUTES': ' '.join(self.config.routes)
         }
@@ -373,6 +424,38 @@ class Tunnel:
 
     def _ensure_tunnel_exists(self, tunnel_type: str, local_ip: str, remote_ip: str, options: Dict[str, str]) -> bool:
         """Ensures the tunnel interface exists and has the correct parameters."""
+        current = self.ip_executor.get_tunnel_params(self.name)
+        
+        if current:
+            # Check if parameters match
+            mismatch = False
+            # Normalize remote/local to None if empty for comparison
+            target_remote = remote_ip if remote_ip else None
+            target_local = local_ip if local_ip else None
+
+            if current.get('type') != tunnel_type:
+                logger.info(f"Tunnel {self.name}: type mismatch ({current.get('type')} != {tunnel_type})")
+                mismatch = True
+            elif current.get('remote') != target_remote:
+                logger.info(f"Tunnel {self.name}: remote mismatch ({current.get('remote')} != {target_remote})")
+                mismatch = True
+            elif current.get('local') != target_local:
+                logger.info(f"Tunnel {self.name}: local mismatch ({current.get('local')} != {target_local})")
+                mismatch = True
+            else:
+                # Check options
+                for k, v in options.items():
+                    if current.get(k) != str(v):
+                        logger.info(f"Tunnel {self.name}: option {k} mismatch ({current.get(k)} != {v})")
+                        mismatch = True
+                        break
+            
+            if not mismatch:
+                logger.info(f"Tunnel {self.name} already exists with correct parameters")
+                return True
+            
+            logger.info(f"Tunnel {self.name} configuration changed. Updating...")
+
         if not self.ip_executor.create_tunnel(self.name, tunnel_type, local_ip, remote_ip, options):
             return False
         return True
@@ -431,11 +514,12 @@ class Tunnel:
             return False
         return True
 
-    def _verify_connectivity(self, verify_ip: str) -> bool:
-        """Verifies connectivity to the given IP address via ping through the tunnel."""
-        if not self.ip_executor.ping_remote(verify_ip, interface=self.name):
-            logger.error(f"Tunnel {self.name}: cannot reach verify_ip {verify_ip} through interface")
-            return False
+    def _verify_connectivity(self, verify_ips: List[str]) -> bool:
+        """Verifies connectivity to the given IP addresses via ping through the tunnel."""
+        for ip in verify_ips:
+            if not self.ip_executor.ping_remote(ip, interface=self.name):
+                logger.error(f"Tunnel {self.name}: cannot reach IP {ip} through interface")
+                return False
         return True
 
     def manage(self) -> bool:
@@ -473,11 +557,10 @@ class Tunnel:
                 return False
             self._run_hooks('after-configured')
 
-            # Verification - only if verify_ip is provided
-            verify_ip = self.config.verify_ip
-            if verify_ip:
+            # Verification - only if verify_ips are provided
+            if self.config.verify_ips:
                 self._run_hooks('before-verify')
-                if not self._verify_connectivity(verify_ip):
+                if not self._verify_connectivity(self.config.verify_ips):
                     return False
                 self._run_hooks('after-verify')
             

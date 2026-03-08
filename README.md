@@ -10,7 +10,7 @@ IP Tunnel Manager is a lightweight Python utility designed to automate the creat
 - **Advanced Options**: Support for specifying tunnel attributes like `TTL`, `Key`, `ID`, and more.
 - **Automatic IP Discovery**: Automatically determines the local endpoint IP if not explicitly provided.
 - **Address & Route Management**: Handles assignment of multiple IP addresses and routing table entries.
-- **Connectivity Validation**: Optional built-in ping verification to ensure tunnels are operational (`verify_ip`).
+- **Connectivity Validation**: Optional built-in ping verification to ensure tunnels are operational (`verify_ips`).
 - **Extensive Hook System**: Execute custom shell commands at every stage of the tunnel lifecycle (global and per-tunnel).
 - **Systemd Integration**: Includes a service unit and a timer for periodic tunnel health checks and management.
 
@@ -86,7 +86,10 @@ The configuration format should be valid JSON.
       "type": "gre",
       "local": "203.0.113.5",
       "remote": "203.0.113.10",
-      "verify_ip": "10.0.0.2",
+      "verify_ips": [
+        "10.0.0.2",
+        "10.0.0.3"
+      ],
       "addresses": [
         "10.0.0.1/24"
       ],
@@ -121,6 +124,7 @@ The configuration format should be valid JSON.
 - `type`: Tunnel mode (e.g., `gre`, `sit`, `ipip`, `isatap`, `gretap`, `vti`).
 - `remote`: Remote endpoint IP address (required).
 - `local`: Local endpoint IP (optional; auto-discovered if omitted).
+- `verify_ips`: Optional list of IP addresses to ping through the tunnel to verify connectivity.
 - `addresses`: List of IP addresses (CIDR) to assign to the tunnel interface.
 - `routes`: Optional list of destinations to route via this tunnel.
 - `options`: Key-value pairs for additional tunnel attributes like `ttl`, `key`, `id`, `dev`, etc.
