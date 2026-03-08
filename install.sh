@@ -12,6 +12,18 @@ SERVICE_NAME="ip-tunnel-manager.service"
 TIMER_NAME="ip-tunnel-manager.timer"
 REPO_URL="https://raw.githubusercontent.com/t3hk0d3/tunnel-manager/refs/heads/master"
 
+# Resolve script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+
+# Cleanup for temporary files
+TMP_FILES=()
+cleanup() {
+    for f in "${TMP_FILES[@]}"; do
+        rm -f "$f"
+    done
+}
+trap cleanup EXIT
+
 # Help message
 function show_help() {
     echo "Usage: sudo $0 [install|uninstall|status]"
@@ -33,9 +45,9 @@ function fetch_file() {
     local filename=$1
     local target_path=$2
     
-    if [[ -f "./$filename" ]]; then
+    if [[ -f "$SCRIPT_DIR/$filename" ]]; then
         echo "Using local $filename..."
-        cp -f "./$filename" "$target_path"
+        cp -f "$SCRIPT_DIR/$filename" "$target_path"
     else
         echo "Downloading $filename from repository..."
         curl -fsSL "$REPO_URL/$filename" -o "$target_path"
@@ -45,11 +57,16 @@ function fetch_file() {
 function install() {
     echo "Installing IP Tunnel Manager..."
 
-    # Check for Python 3
-    if ! command -v python3 &> /dev/null; then
-        echo "Error: Python 3 is not installed."
-        exit 1
-    fi
+    # Check dependencies
+    for cmd in python3 ip systemctl curl; do
+        if ! command -v "$cmd" &> /dev/null; then
+            echo "Error: Required command '$cmd' is not installed."
+            exit 1
+        fi
+    done
+
+    # Pre-flight Service Management
+    systemctl stop "$TIMER_NAME" "$SERVICE_NAME" 2>/dev/null || true
 
     # 1. Create Directories
     mkdir -p "$CONFIG_DIR"
@@ -77,12 +94,16 @@ function install() {
 }
 EOF
     fi
+    
+    # Secure Configuration
+    chmod 600 "$CONFIG_DIR/config.json"
 
     # 4. Install Systemd Units
     echo "Configuring systemd units..."
     
     # Process and install .service file
     local tmp_service=$(mktemp)
+    TMP_FILES+=("$tmp_service")
     fetch_file "ip-tunnel-manager.service" "$tmp_service"
     # Update paths to match installation
     sed -i "s|ExecStart=.*|ExecStart=$INSTALL_DIR/ip-tunnel-manager $CONFIG_DIR/config.json|" "$tmp_service"
@@ -104,16 +125,24 @@ EOF
 function uninstall() {
     echo "Uninstalling IP Tunnel Manager..."
 
-    systemctl stop "$TIMER_NAME" 2>/dev/null || true
-    systemctl disable "$TIMER_NAME" 2>/dev/null || true
+    systemctl stop "$TIMER_NAME" "$SERVICE_NAME" 2>/dev/null || true
+    systemctl disable "$TIMER_NAME" "$SERVICE_NAME" 2>/dev/null || true
     
     rm -f "/etc/systemd/system/$SERVICE_NAME"
     rm -f "/etc/systemd/system/$TIMER_NAME"
     rm -f "$INSTALL_DIR/ip-tunnel-manager"
     
     systemctl daemon-reload
+    systemctl reset-failed "$TIMER_NAME" "$SERVICE_NAME" 2>/dev/null || true
     
-    echo "Uninstall complete. Configuration in $CONFIG_DIR was preserved."
+    # Remove config dir if empty
+    rmdir "$CONFIG_DIR" 2>/dev/null || true
+    
+    if [[ -d "$CONFIG_DIR" ]]; then
+        echo "Uninstall complete. Configuration in $CONFIG_DIR was preserved."
+    else
+        echo "Uninstall complete."
+    fi
 }
 
 function status() {
