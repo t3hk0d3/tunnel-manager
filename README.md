@@ -24,10 +24,10 @@ IP Tunnel Manager is a lightweight Python utility designed to automate the creat
 
 ### Setup
 
-1. **Clone the repository**:
+1. **Download and unpack the repository**:
    ```bash
-   git clone https://github.com/your-repo/tunnel-manager.git
-   cd tunnel-manager
+   curl -L https://github.com/t3hk0d3/tunnel-manager/archive/refs/heads/master.tar.gz | tar xz
+   cd tunnel-manager-master
    ```
 
 2. **Install the Systemd service & timer (Optional)**:
