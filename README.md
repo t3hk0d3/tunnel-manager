@@ -6,11 +6,11 @@ IP Tunnel Manager is a lightweight Python utility designed to automate the creat
 
 - **Protocol Support**: Supports `GRE`, `SIT`, `IPIP`, `ISATAP`, `GRETAP`, `VTI`, and any other tunnel types supported by the `ip link` subsystem.
 - **Modern Command Architecture**: Utilizes `ip link add` for more flexible tunnel creation and configuration.
-- **Declarative Configuration**: Define all tunnels in a single JSON or YAML file.
+- **Declarative Configuration**: Define all tunnels in a single JSON file.
 - **Advanced Options**: Support for specifying tunnel attributes like `TTL`, `Key`, `ID`, and more.
 - **Automatic IP Discovery**: Automatically determines the local endpoint IP if not explicitly provided.
 - **Address & Route Management**: Handles assignment of multiple IP addresses and routing table entries.
-- **Connectivity Validation**: Built-in ping verification to ensure tunnels are operational.
+- **Connectivity Validation**: Optional built-in ping verification to ensure tunnels are operational (`verify_ip`).
 - **Extensive Hook System**: Execute custom shell commands at every stage of the tunnel lifecycle (global and per-tunnel).
 - **Systemd Integration**: Includes a service unit and a timer for periodic tunnel health checks and management.
 
@@ -61,7 +61,7 @@ If you prefer to install it manually:
 The manager looks for a configuration file in the following order:
 1.  **Command-line argument**: `python tunnel-manager.py /path/to/config.json`
 2.  **Environment variable**: `TUNNEL_MANAGER_CONFIG=/path/to/config.json python tunnel-manager.py`
-3.  **Default path**: `/etc/ip-tunnel-manager/config.yaml`
+3.  **Default path**: `/etc/ip-tunnel-manager/config.json`
 
 The configuration format should be valid JSON.
 
@@ -79,6 +79,7 @@ The configuration format should be valid JSON.
       "type": "gre",
       "local": "203.0.113.5",
       "remote": "203.0.113.10",
+      "verify_ip": "10.0.0.2",
       "addresses": [
         "10.0.0.1/24"
       ],
@@ -181,6 +182,22 @@ The following events can trigger hooks:
 | `on-success` | Tunnel | Runs only if the entire setup for the tunnel succeeded. |
 | `on-failure` | Tunnel | Runs if any part of the setup failed. |
 | `always` | Tunnel | Runs at the end regardless of success or failure. |
+
+## WireGuard via Hooks
+
+Since WireGuard interfaces are managed via the `wg` tool, you can use hooks to handle the setup while the manager handles interface creation, IP addresses, and routing:
+
+```json
+"wg-vpn": {
+  "type": "wireguard",
+  "addresses": ["10.8.0.2/24"],
+  "hooks": {
+    "after-create": ["wg set $TUNNEL_NAME private-key /path/to/key peer <PUBKEY> endpoint 1.2.3.4:51820"]
+  }
+}
+```
+
+The manager natively handles the creation of the `wireguard` interface. By using the `after-create` hook, you can apply your specific peer and key configuration. If you omit `remote` and `local`, the manager will skip the connectivity verification (ping) phase.
 
 ## License
 

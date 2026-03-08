@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /home/tehkode/dev/tunnel-manager/tunnel-manager.py /etc/ip-tunnel-manager/config.yaml
+ExecStart=/usr/bin/python3 /home/tehkode/dev/tunnel-manager/tunnel-manager.py /etc/ip-tunnel-manager/config.json
 StandardOutput=journal
 StandardError=journal
 

@@ -1,0 +1,65 @@
+{
+  "hooks": {
+    "before-all": [
+      "echo 'Starting IP Tunnel Manager...'"
+    ],
+    "after-all": [
+      "echo 'Finished processing all tunnels.'"
+    ]
+  },
+  "tunnels": {
+    "gre-tunnel0": {
+      "type": "gre",
+      "remote": "203.0.113.10",
+      "local": "203.0.113.5",
+      "verify_ip": "10.0.0.2",
+      "addresses": [
+        "10.0.0.1/24",
+        "fd00:db8::1/64"
+      ],
+      "routes": [
+        "192.168.100.0/24",
+        "172.16.0.0/12"
+      ],
+      "options": {
+        "ttl": "64",
+        "key": "1001"
+      },
+      "hooks": {
+        "after-up": [
+          "echo \"Tunnel $TUNNEL_NAME is now UP!\"",
+          "ping -c 3 10.0.0.2 || echo \"Warning: Peer not reachable yet\""
+        ]
+      }
+    },
+    "vti-office": {
+      "type": "vti",
+      "remote": "198.51.100.20",
+      "addresses": [
+        "10.1.0.1/30"
+      ],
+      "options": {
+        "key": "42",
+        "id": "1"
+      }
+    },
+    "sit-ipv6": {
+      "type": "sit",
+      "remote": "203.0.113.50",
+      "addresses": [
+        "2001:db8:1234::1/64"
+      ]
+    },
+    "wg-vpn": {
+      "type": "wireguard",
+      "addresses": [
+        "10.8.0.2/24"
+      ],
+      "hooks": {
+        "after-create": [
+          "wg set $TUNNEL_NAME private-key /etc/wireguard/private.key peer <PEER_PUBLIC_KEY> allowed-ips 10.8.0.0/24 endpoint 1.2.3.4:51820"
+        ]
+      }
+    }
+  }
+}
