@@ -533,9 +533,17 @@ class TunnelManager:
             self.hook_executor.run_hooks(global_hooks['after-all'], event_name='after-all')
 
 if __name__ == '__main__':
-    config_file = os.environ.get('TUNNEL_MANAGER_CONFIG', '/etc/ip-tunnel-manager/config.json')
     if len(sys.argv) > 1:
         config_file = sys.argv[1]
+    elif 'TUNNEL_MANAGER_CONFIG' in os.environ:
+        config_file = os.environ['TUNNEL_MANAGER_CONFIG']
+    else:
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        local_config = os.path.join(script_dir, 'config.json')
+        if os.path.isfile(local_config):
+            config_file = local_config
+        else:
+            config_file = '/etc/ip-tunnel-manager/config.json'
 
     manager = TunnelManager(config_file)
     manager.run()

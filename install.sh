@@ -106,7 +106,8 @@ EOF
     TMP_FILES+=("$tmp_service")
     fetch_file "ip-tunnel-manager.service" "$tmp_service"
     # Update paths to match installation
-    sed -i "s|ExecStart=.*|ExecStart=$INSTALL_DIR/ip-tunnel-manager $CONFIG_DIR/config.json|" "$tmp_service"
+    sed -i "s|<installation dir>|$INSTALL_DIR|g" "$tmp_service"
+    sed -i "s|<configuration dir>|$CONFIG_DIR|g" "$tmp_service"
     mv "$tmp_service" "/etc/systemd/system/$SERVICE_NAME"
 
     # Install .timer file
