@@ -350,8 +350,9 @@ class IpCommandExecutor:
             cmd = [version, 'route', 'show', 'dev', interface]
             data = self._run_json_cmd(cmd)
             for entry in data:
-                # Filter out kernel-managed routes (e.g., proto kernel) to match previous behavior
-                if 'dst' in entry and entry.get('protocol') != 'kernel':
+                # Filter out kernel-managed routes and routing daemon routes (BGP/Zebra)
+                protocol = entry.get('protocol')
+                if 'dst' in entry and protocol not in ['kernel', 'bgp', 'zebra']:
                     dst = entry['dst']
                     if dst == 'default':
                         dst = '0.0.0.0/0' if version == '-4' else '::/0'
